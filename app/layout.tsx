@@ -22,7 +22,7 @@ export default function RootLayout({
       <body>
      <header className="site-header">
           <a href="/" className="logo">
-            <img src="/logo.png" alt="SelfNative" style={{ height: '28px', width: 'auto' }} />
+            <img src="/logo.svg" alt="SelfNative" style={{ height: '28px', width: 'auto' }} />
             SelfNative
           </a>
           <nav className="flex items-center gap-4 md:gap-6">
