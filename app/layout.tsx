@@ -20,18 +20,20 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <header className="site-header">
+     <header className="site-header">
           <a href="/" className="logo">
-            <img src="/logo.svg" alt="SelfNative" style={{ height: '28px', width: 'auto' }} />
+            <img src="/logo.png" alt="SelfNative" style={{ height: '28px', width: 'auto' }} />
             SelfNative
           </a>
-          <nav>
-            <a href="/dashboard">Dashboard</a>
-            <a href="/reviews">Reviews</a>
-            <a href="/progress">Progress</a>
-            <a href="/#partners">Our Partners</a>
-            <a href="/#spotlight">Spotlight</a>
-            <a href="/practice" className="gradient-btn" style={{ padding: '9px 18px', borderRadius: '999px', fontSize: '14px' }}>
+          <nav className="flex items-center gap-4 md:gap-6">
+            <span className="hidden md:flex items-center gap-6">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/reviews">Reviews</a>
+              <a href="/progress">Progress</a>
+              <a href="/#partners">Our Partners</a>
+              <a href="/#spotlight">Spotlight</a>
+            </span>
+            <a href="/practice" className="gradient-btn" style={{ padding: '9px 16px', borderRadius: '999px', fontSize: '13px', whiteSpace: 'nowrap' }}>
               Start Practicing →
             </a>
           </nav>

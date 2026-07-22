@@ -10,9 +10,9 @@ export default function Home() {
 
   return (
     <main>
-      <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 grid md:grid-cols-2 gap-12 items-center">
+      <section className="max-w-6xl mx-auto px-6 pt-10 md:pt-20 pb-16 grid md:grid-cols-2 gap-12 items-center">
         <div>
-          <h1 className="display text-5xl font-bold leading-tight text-slate-800 mb-5">
+          <h1 className="display text-3xl md:text-5xl font-bold leading-tight text-slate-800 mb-5">
             Master IELTS Speaking with <span className="gradient-text">AI-Powered Practice</span>
           </h1>
           <p className="text-slate-500 text-lg mb-8 max-w-md">
