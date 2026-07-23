@@ -23,7 +23,12 @@ export default function Reviews() {
             <div key={i} className="card p-6">
               <div className="text-amber-400 mb-3">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</div>
               <p className="font-semibold text-slate-800 mb-3">"{r.comment}"</p>
-              <p className="text-sm text-slate-500">{r.name}</p>
+              <p className="text-sm text-slate-700 font-medium">{r.name}</p>
+              {(r.profession || r.institute) && (
+                <p className="text-xs text-slate-400">
+                  {r.profession}{r.profession && r.institute ? ' — ' : ''}{r.institute}
+                </p>
+              )}
             </div>
           ))}
         </div>
