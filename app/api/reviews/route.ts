@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import { Redis } from '@upstash/redis';
 
-const reviewsPath = path.join('/tmp', 'reviews.json');
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 export async function GET() {
-  if (!fs.existsSync(reviewsPath)) return NextResponse.json([]);
-  const reviews = JSON.parse(fs.readFileSync(reviewsPath, 'utf-8'));
+  const raw = await redis.lrange('reviews', 0, -1);
+  const reviews = raw.map((r: any) => (typeof r === 'string' ? JSON.parse(r) : r));
   return NextResponse.json(reviews);
 }
 
@@ -16,18 +18,14 @@ export async function POST(req: NextRequest) {
   if (!comment || !rating || !name) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
-  let reviews = [];
-  if (fs.existsSync(reviewsPath)) {
-    reviews = JSON.parse(fs.readFileSync(reviewsPath, 'utf-8'));
-  }
-  reviews.push({
+  const reviewRecord = {
     name,
     profession: profession || '',
     institute: institute || '',
     rating,
     comment,
     date: new Date().toISOString(),
-  });
-  fs.writeFileSync(reviewsPath, JSON.stringify(reviews, null, 2));
+  };
+  await redis.rpush('reviews', JSON.stringify(reviewRecord));
   return NextResponse.json({ success: true });
 }

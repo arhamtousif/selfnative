@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import fs from 'fs';
-import path from 'path';
+import { Redis } from '@upstash/redis';
+
+const redis = new Redis({
+  url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -31,16 +35,16 @@ export async function POST(req: NextRequest) {
     const topic = (formData.get('topic') as string) || '';
 
     const buffer = Buffer.from(await audioFile.arrayBuffer());
-    const tempPath = path.join('/tmp', `rec-${Date.now()}.webm`);
-    fs.writeFileSync(tempPath, buffer);
+    const tempPath = require('path').join('/tmp', `rec-${Date.now()}.webm`);
+    require('fs').writeFileSync(tempPath, buffer);
 
     const transcription = await openai.audio.transcriptions.create({
-      file: fs.createReadStream(tempPath),
+      file: require('fs').createReadStream(tempPath),
       model: 'whisper-1',
       response_format: 'json',
     });
 
-    fs.unlinkSync(tempPath);
+    require('fs').unlinkSync(tempPath);
 
 const scoringPrompt = `
 ${RUBRIC}
@@ -78,15 +82,8 @@ const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
     const rawText = textBlock.text as string;
     const jsonPart = rawText.includes('===SCORE===') ? rawText.split('===SCORE===')[1] : rawText;
     const scoreData = JSON.parse(jsonPart.replace(/```json|```/g, '').trim());
-    const sessionsPath = path.join('/tmp', 'sessions.json');
-    fs.mkdirSync(path.dirname(sessionsPath), { recursive: true });
-    let sessions = [];
-    if (fs.existsSync(sessionsPath)) {
-      sessions = JSON.parse(fs.readFileSync(sessionsPath, 'utf-8'));
-    }
-    sessions.push({ date: new Date().toISOString(), name, topic, transcript: transcription.text, ...scoreData });
-    fs.writeFileSync(sessionsPath, JSON.stringify(sessions, null, 2));
-
+const sessionRecord = { date: new Date().toISOString(), name, topic, transcript: transcription.text, ...scoreData };
+    await redis.rpush('sessions', JSON.stringify(sessionRecord));
     return NextResponse.json(scoreData);
   } catch (err: any) {
     console.error('Scoring error:', err);
