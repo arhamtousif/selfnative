@@ -3,14 +3,30 @@ import { useEffect, useState } from 'react';
 
 export default function Home() {
   const [reviews, setReviews] = useState<any[]>([]);
+  const [stats, setStats] = useState({ sessionCount: 0, reviewCount: 0, avgRating: 0 });
 
   useEffect(() => {
     fetch('/api/reviews').then(r => r.json()).then((data) => setReviews([...data].reverse().slice(0, 3)));
+    fetch('/api/stats').then(r => r.json()).then(setStats);
   }, []);
 
   return (
     <main>
       <section className="max-w-6xl mx-auto px-6 pt-10 md:pt-20 pb-16 grid md:grid-cols-2 gap-12 items-center">
+        <section className="max-w-4xl mx-auto px-6 pt-10 grid grid-cols-3 gap-4 text-center">
+        <div className="card p-4">
+          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.sessionCount}</p>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">Practice Sessions</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.reviewCount}</p>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">Reviews Given</p>
+        </div>
+        <div className="card p-4">
+          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.avgRating || '—'}</p>
+          <p className="text-xs md:text-sm text-slate-500 mt-1">Average Rating</p>
+        </div>
+      </section>
         <div>
           <h1 className="display text-3xl md:text-5xl font-bold leading-tight text-slate-800 mb-5">
             Master IELTS Speaking with <span className="gradient-text">AI-Powered Practice</span>
