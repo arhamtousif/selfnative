@@ -12,24 +12,6 @@ export default function Home() {
 
   return (
     <main>
-      <section className="max-w-3xl mx-auto px-6 pt-12 text-center">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">Trusted by learners worldwide</p>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="card p-5">
-            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.sessionCount}</p>
-            <p className="text-xs md:text-sm text-slate-500 mt-1">Practice Sessions</p>
-          </div>
-          <div className="card p-5">
-            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.reviewCount}</p>
-            <p className="text-xs md:text-sm text-slate-500 mt-1">Reviews Given</p>
-          </div>
-          <div className="card p-5">
-            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.avgRating || '—'}</p>
-            <p className="text-xs md:text-sm text-slate-500 mt-1">Average Rating</p>
-          </div>
-        </div>
-      </section>
-
       <section className="max-w-6xl mx-auto px-6 pt-10 md:pt-16 pb-16 grid md:grid-cols-2 gap-12 items-center">
         <div>
           <h1 className="display text-3xl md:text-5xl font-bold leading-tight text-slate-800 mb-5">
@@ -73,6 +55,23 @@ export default function Home() {
           <div className="gradient-btn rounded-xl p-4 mt-4 text-center">
             <p className="text-xs opacity-80">Predicted IELTS Band</p>
             <p className="text-3xl font-bold">8.0</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="max-w-4xl mx-auto px-6 pb-4">
+        <div className="flex flex-wrap justify-center gap-x-10 gap-y-3 text-center">
+          <div>
+            <span className="text-lg font-bold gradient-text">{stats.sessionCount}</span>
+            <span className="text-sm text-slate-500 ml-1.5">Practice Sessions</span>
+          </div>
+          <div>
+            <span className="text-lg font-bold gradient-text">{stats.reviewCount}</span>
+            <span className="text-sm text-slate-500 ml-1.5">Reviews Given</span>
+          </div>
+          <div>
+            <span className="text-lg font-bold gradient-text">{stats.avgRating || '—'}</span>
+            <span className="text-sm text-slate-500 ml-1.5">Average Rating</span>
           </div>
         </div>
       </section>
