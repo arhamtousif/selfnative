@@ -12,21 +12,25 @@ export default function Home() {
 
   return (
     <main>
-      <section className="max-w-6xl mx-auto px-6 pt-10 md:pt-20 pb-16 grid md:grid-cols-2 gap-12 items-center">
-        <section className="max-w-4xl mx-auto px-6 pt-10 grid grid-cols-3 gap-4 text-center">
-        <div className="card p-4">
-          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.sessionCount}</p>
-          <p className="text-xs md:text-sm text-slate-500 mt-1">Practice Sessions</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.reviewCount}</p>
-          <p className="text-xs md:text-sm text-slate-500 mt-1">Reviews Given</p>
-        </div>
-        <div className="card p-4">
-          <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.avgRating || '—'}</p>
-          <p className="text-xs md:text-sm text-slate-500 mt-1">Average Rating</p>
+      <section className="max-w-3xl mx-auto px-6 pt-12 text-center">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-4">Trusted by learners worldwide</p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.sessionCount}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Practice Sessions</p>
+          </div>
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.reviewCount}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Reviews Given</p>
+          </div>
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.avgRating || '—'}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Average Rating</p>
+          </div>
         </div>
       </section>
+
+      <section className="max-w-6xl mx-auto px-6 pt-10 md:pt-16 pb-16 grid md:grid-cols-2 gap-12 items-center">
         <div>
           <h1 className="display text-3xl md:text-5xl font-bold leading-tight text-slate-800 mb-5">
             Master IELTS Speaking with <span className="gradient-text">AI-Powered Practice</span>
@@ -109,7 +113,12 @@ export default function Home() {
               <div key={i} className="card p-6 text-left">
                 <div className="text-amber-400 mb-3">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</div>
                 <p className="font-semibold text-slate-800 mb-3">"{r.comment}"</p>
-                <p className="text-sm text-slate-500">{r.name}</p>
+                <p className="text-sm text-slate-700 font-medium">{r.name}</p>
+                {(r.profession || r.institute) && (
+                  <p className="text-xs text-slate-400">
+                    {r.profession}{r.profession && r.institute ? ' — ' : ''}{r.institute}
+                  </p>
+                )}
               </div>
             ))}
           </div>
