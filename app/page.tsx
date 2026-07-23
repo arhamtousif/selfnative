@@ -59,19 +59,19 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="max-w-4xl mx-auto px-6 pb-4">
-        <div className="flex flex-wrap justify-center gap-x-10 gap-y-3 text-center">
-          <div>
-            <span className="text-lg font-bold gradient-text">{stats.sessionCount}</span>
-            <span className="text-sm text-slate-500 ml-1.5">Practice Sessions</span>
+      <section className="max-w-3xl mx-auto px-6 pb-6 text-center">
+        <div className="grid grid-cols-3 gap-4">
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.sessionCount}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Practice Sessions</p>
           </div>
-          <div>
-            <span className="text-lg font-bold gradient-text">{stats.reviewCount}</span>
-            <span className="text-sm text-slate-500 ml-1.5">Reviews Given</span>
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.reviewCount}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Reviews Given</p>
           </div>
-          <div>
-            <span className="text-lg font-bold gradient-text">{stats.avgRating || '—'}</span>
-            <span className="text-sm text-slate-500 ml-1.5">Average Rating</span>
+          <div className="card p-5">
+            <p className="text-2xl md:text-3xl font-bold gradient-text">{stats.avgRating || '—'}</p>
+            <p className="text-xs md:text-sm text-slate-500 mt-1">Average Rating</p>
           </div>
         </div>
       </section>
