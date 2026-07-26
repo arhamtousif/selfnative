@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const CUE_CARDS = [
   { topic: "Describe a memorable journey you have taken.", points: ["Where you went", "Who you were with", "What you did there", "And explain why it was memorable"] },
@@ -34,15 +34,47 @@ const CUE_CARDS = [
   { topic: "Describe a neighbor or someone who lives near you.", points: ["Who this person is", "How well you know them", "What they are like", "And explain your relationship with them"] },
 ];
 
+const errorCopy: Record<string, { title: string; hint: string }> = {
+  billing: { title: 'Scoring service unavailable', hint: 'This usually means an API billing/credit issue on our end, not your recording.' },
+  malformed_response: { title: 'Scoring came back incomplete', hint: 'Your recording is safe — just retry scoring.' },
+  whisper_failed: { title: "Couldn't transcribe your audio", hint: 'Check your mic input and try recording again.' },
+  network: { title: 'Connection issue', hint: 'Check your internet connection and try again.' },
+  unknown: { title: 'Scoring failed', hint: 'Something unexpected happened. Please try again.' },
+};
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="card p-8 text-center">
+          <p className="text-red-600 font-semibold mb-2">Something went wrong displaying your results.</p>
+          <button onClick={() => window.location.reload()} className="gradient-btn rounded-xl px-6 py-3 mt-2">
+            Reload
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function Practice() {
   const [phase, setPhase] = useState<'name' | 'prep' | 'speaking' | 'processing' | 'result'>('name');
   const [cueCard] = useState(() => CUE_CARDS[Math.floor(Math.random() * CUE_CARDS.length)]);
   const [name, setName] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(60);
   const [result, setResult] = useState<any>(null);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorInfo, setErrorInfo] = useState<{ message: string; type: string } | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const lastBlobRef = useRef<Blob | null>(null);
 
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
@@ -84,26 +116,42 @@ export default function Practice() {
     recorder.stop();
     recorder.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-      const formData = new FormData();
-      formData.append('audio', blob, 'response.webm');
-      formData.append('name', name);
-      formData.append('topic', cueCard.topic);
-
-      try {
-        const res = await fetch('/api/score', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (data.error) {
-          setErrorMsg(data.error);
-          setPhase('result');
-          return;
-        }
-        setResult(data);
-        setPhase('result');
-      } catch (err) {
-        setErrorMsg('Something went wrong while scoring. Please try again.');
-        setPhase('result');
-      }
+      lastBlobRef.current = blob;
+      await runScoring(blob);
     };
+  }
+
+  async function runScoring(blob: Blob) {
+    setPhase('processing');
+    setErrorInfo(null);
+    const formData = new FormData();
+    formData.append('audio', blob, 'response.webm');
+    formData.append('name', name);
+    formData.append('topic', cueCard.topic);
+    formData.append('points', cueCard.points.join(' • '));
+
+    try {
+      const res = await fetch('/api/score', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.error) {
+        setErrorInfo({ message: data.error, type: data.type || 'unknown' });
+        setPhase('result');
+        return;
+      }
+      setResult(data);
+      setPhase('result');
+    } catch (err) {
+      setErrorInfo({ message: 'Network error while scoring.', type: 'network' });
+      setPhase('result');
+    }
+  }
+
+  function retryScoring() {
+    if (lastBlobRef.current) {
+      runScoring(lastBlobRef.current);
+    } else {
+      window.location.reload();
+    }
   }
 
   async function submitReview() {
@@ -213,14 +261,15 @@ export default function Practice() {
     );
   }
 
-  if (errorMsg) {
+  if (errorInfo) {
+    const copy = errorCopy[errorInfo.type] || errorCopy.unknown;
     return (
       <main className="max-w-xl mx-auto mt-24 px-6 text-center">
         <div className="card p-8">
-          <h1 className="text-lg font-semibold text-red-600 mb-2">Something went wrong</h1>
-          <p className="text-slate-500 text-sm mb-6">{errorMsg}</p>
-          <button onClick={() => window.location.reload()} className="gradient-btn rounded-xl px-6 py-3">
-            Try again
+          <h1 className="text-lg font-semibold text-red-600 mb-2">{copy.title}</h1>
+          <p className="text-slate-500 text-sm mb-6">{copy.hint}</p>
+          <button onClick={retryScoring} className="gradient-btn rounded-xl px-6 py-3">
+            Retry scoring
           </button>
         </div>
       </main>
@@ -228,90 +277,105 @@ export default function Practice() {
   }
 
   return (
-    <main className="max-w-4xl mx-auto mt-16 px-6 pb-16">
-      <a href="/" className="text-sm text-slate-400 mb-6 inline-block">← Back</a>
-      <div className="grid md:grid-cols-2 gap-5 mb-5">
-        <div className="card p-6">
-          <span className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1 rounded-full">🤖 AI Feedback · Live Analysis</span>
-          <div className="space-y-4 mt-5">
-            {[
-              ['Fluency', result?.fluency],
-              ['Grammar', result?.grammar],
-              ['Pronunciation', result?.pronunciation],
-              ['Vocabulary', result?.lexical],
-            ].map(([label, val]) => (
-              <div key={label as string}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-500">{label}</span>
-                  <span className="font-semibold text-slate-800">{val}</span>
+    <ErrorBoundary>
+      <main className="max-w-4xl mx-auto mt-16 px-6 pb-16">
+        <a href="/" className="text-sm text-slate-400 mb-6 inline-block">← Back</a>
+        <div className="grid md:grid-cols-2 gap-5 mb-5">
+          <div className="card p-6">
+            <span className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1 rounded-full">🤖 AI Feedback · Live Analysis</span>
+            <div className="space-y-4 mt-5">
+              {[
+                ['Fluency', result?.fluency],
+                ['Grammar', result?.grammar],
+                ['Pronunciation', result?.pronunciation],
+                ['Vocabulary', result?.lexical],
+              ].map(([label, val]) => (
+                <div key={label as string}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-slate-500">{label}</span>
+                    <span className="font-semibold text-slate-800">{val}</span>
+                  </div>
+                  <div className="progress-track"><div className="progress-fill" style={{ width: band10(Number(val) || 0) }} /></div>
                 </div>
-                <div className="progress-track"><div className="progress-fill" style={{ width: band10(Number(val) || 0) }} /></div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="gradient-btn rounded-xl p-4 mt-6 text-center">
+              <p className="text-xs opacity-80">Predicted IELTS Band</p>
+              <p className="text-3xl font-bold">{result?.overallBand}</p>
+            </div>
           </div>
-          <div className="gradient-btn rounded-xl p-4 mt-6 text-center">
-            <p className="text-xs opacity-80">Predicted IELTS Band</p>
-            <p className="text-3xl font-bold">{result?.overallBand}</p>
+
+          <div className="card p-6">
+            <h2 className="font-bold text-slate-800 mb-3 text-lg">Examiner Feedback</h2>
+            <p className="text-sm text-slate-600 italic mb-5">"{result?.full?.examiner_summary}"</p>
+
+            <h3 className="text-xs font-semibold text-emerald-700 uppercase tracking-wide mb-2">Strengths</h3>
+            <ul className="space-y-2 mb-5">
+              {result?.full?.top_strengths?.map((s: any, i: number) => (
+                <li key={i} className="text-sm">
+                  <span className="font-medium text-slate-800">{s.strength}</span>
+                  <span className="text-slate-500"> — "{s.evidence}"</span>
+                </li>
+              ))}
+            </ul>
+
+            <h3 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-2">Improvements</h3>
+            <ul className="space-y-2 mb-5">
+              {result?.full?.priority_improvements?.map((imp: any, i: number) => (
+                <li key={i} className="text-sm">
+                  <span className="font-medium text-slate-800">{imp.issue}</span>
+                  <span className="text-slate-500"> — "{imp.evidence}"</span>
+                  <p className="text-xs text-slate-400 mt-0.5">Try: {imp.actionable_fix}</p>
+                </li>
+              ))}
+            </ul>
+
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full gradient-btn rounded-xl py-3"
+            >
+              Try another →
+            </button>
           </div>
         </div>
 
         <div className="card p-6">
-          <h2 className="font-bold text-slate-800 mb-4 text-lg">Session Feedback</h2>
-          <p className="text-emerald-700 font-medium text-sm mb-3">
-            Strengths: {result?.strengths?.join(' • ')}
-          </p>
-          <p className="text-amber-800 font-medium text-sm mb-4">
-            Improvements: {result?.improvements?.join(' • ')}
-          </p>
-          <div className="bg-slate-50 rounded-xl p-4 flex gap-3 text-sm text-slate-700">
-            <span>📅</span>
-            <span>Suggested: {result?.suggested}</span>
-          </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full gradient-btn rounded-xl py-3 mt-6"
-          >
-            Try another →
-          </button>
-        </div>
-      </div>
-
-      <div className="card p-6">
-        {reviewSubmitted ? (
-          <p className="text-center text-emerald-600 font-semibold">Thanks for your feedback! 🎉</p>
-        ) : (
-          <div className="flex flex-col md:flex-row gap-6 items-start">
-            <div className="shrink-0">
-              <p className="font-bold text-slate-800 text-lg mb-1">Review →</p>
-              <p className="text-sm text-slate-500 max-w-[220px]">Share your opinion by giving a personal review</p>
-            </div>
-            <div className="flex-1 w-full">
-              <div className="flex gap-1 mb-3">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setRating(n)}
-                    className="text-2xl"
-                    style={{ color: n <= rating ? '#f59e0b' : '#e2e8f0' }}
-                  >
-                    ★
-                  </button>
-                ))}
+          {reviewSubmitted ? (
+            <p className="text-center text-emerald-600 font-semibold">Thanks for your feedback! 🎉</p>
+          ) : (
+            <div className="flex flex-col md:flex-row gap-6 items-start">
+              <div className="shrink-0">
+                <p className="font-bold text-slate-800 text-lg mb-1">Review →</p>
+                <p className="text-sm text-slate-500 max-w-[220px]">Share your opinion by giving a personal review</p>
               </div>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="What did you think of your practice session?"
-                className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none focus:border-violet-400 mb-3 resize-none"
-                rows={3}
-              />
-              <button onClick={submitReview} className="gradient-btn rounded-xl px-6 py-2.5 text-sm">
-                Submit review
-              </button>
+              <div className="flex-1 w-full">
+                <div className="flex gap-1 mb-3">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setRating(n)}
+                      className="text-2xl"
+                      style={{ color: n <= rating ? '#f59e0b' : '#e2e8f0' }}
+                    >
+                      ★
+                    </button>
+                  ))}
+                </div>
+                <textarea
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="What did you think of your practice session?"
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none focus:border-violet-400 mb-3 resize-none"
+                  rows={3}
+                />
+                <button onClick={submitReview} className="gradient-btn rounded-xl px-6 py-2.5 text-sm">
+                  Submit review
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    </main>
+          )}
+        </div>
+      </main>
+    </ErrorBoundary>
   );
 }

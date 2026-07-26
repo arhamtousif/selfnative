@@ -3,29 +3,38 @@ import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { Redis } from '@upstash/redis';
 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const redis = new Redis({
   url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+function extractDisfluencyMarkers(transcription: any) {
+  const words: any[] = transcription.words || [];
+  const pauses: { after: string; duration: number }[] = [];
+  for (let i = 0; i < words.length - 1; i++) {
+    const gap = words[i + 1].start - words[i].end;
+    if (gap > 0.5) pauses.push({ after: words[i].word, duration: Math.round(gap * 10) / 10 });
+  }
+  const duration = transcription.duration || (words.length ? words[words.length - 1].end : 0);
+  const speechRate = duration > 0 ? Math.round((words.length / (duration / 60)) * 10) / 10 : 0;
+  return { pauses, speechRate, duration };
+}
 
-const RUBRIC = `
-You are an experienced, fair IELTS Speaking examiner. Score holistically, the way a real examiner does: listen to overall communicative effectiveness first, then check against band descriptors. Do not hunt for minor flaws to justify a lower score.
-
-CRITICAL CALIBRATION NOTE: Examiners consistently under-score confident, natural speakers when scoring from transcripts alone, because transcripts strip out delivery, pacing, and natural intonation that would be obvious in audio. To compensate: if the transcript shows natural word choice, idiomatic phrasing, complex sentence structures used correctly, and clear logical organization — even in a short sample — this is strong evidence of a Band 7.5-9 speaker. Do not default to the 6-7 range out of caution. Trust clear evidence of fluency and range.
-
-IMPORTANT: The transcript may start or end abruptly because of recording start/stop timing, not because of the speaker's fluency. Never penalize fluency, coherence, or grammar for an abrupt beginning or cutoff ending of the transcript.
-
-FLUENCY & COHERENCE (1-9): Band 9 = fluent, only rare content-related hesitation. Band 7-8 = speaks at length with ease, ideas well connected, occasional hesitation. Band 5-6 = maintains flow with noticeable repetition or slower pace. Band 3-4 = frequent long pauses.
-
-LEXICAL RESOURCE (1-9): Band 9 = wide, precise, natural vocabulary. Band 7-8 = flexible vocabulary, idiomatic phrasing, occasional inaccuracy in less common words. Band 5-6 = adequate but limited, some noticeable errors. Band 3-4 = very basic, frequent errors.
-
-GRAMMATICAL RANGE & ACCURACY (1-9): Band 9 = full range, natural, nearly error-free. Band 7-8 = good range used flexibly, frequent error-free complex sentences, occasional slips. Band 5-6 = basic structures, frequent errors in complex sentences. Band 3-4 = only basic forms, errors impede meaning.
-
-PRONUNCIATION (1-9): Since only a transcript is available, infer pronunciation from sentence flow and word choice clarity — do not default to a low or middling score just because audio isn't directly assessed. Band 7-8 should be the default assumption for clear, well-formed, idiomatic transcripts.
-`;
+function classifyScoringError(err: unknown): { type: string; message: string } {
+  const message = err instanceof Error ? err.message : String(err);
+  const lower = message.toLowerCase();
+  if (lower.includes('credit balance') || lower.includes('insufficient_quota') || lower.includes('billing'))
+    return { type: 'billing', message };
+  if (lower.includes('json') || lower.includes('unexpected token') || lower.includes('malformed'))
+    return { type: 'malformed_response', message };
+  if (lower.includes('whisper') || lower.includes('transcription') || lower.includes('audio'))
+    return { type: 'whisper_failed', message };
+  if (lower.includes('fetch failed') || lower.includes('network') || lower.includes('timeout'))
+    return { type: 'network', message };
+  return { type: 'unknown', message };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,60 +42,122 @@ export async function POST(req: NextRequest) {
     const audioFile = formData.get('audio') as File;
     const name = (formData.get('name') as string) || 'Anonymous';
     const topic = (formData.get('topic') as string) || '';
+    const points = (formData.get('points') as string) || '';
 
-    const buffer = Buffer.from(await audioFile.arrayBuffer());
-    const tempPath = require('path').join('/tmp', `rec-${Date.now()}.webm`);
-    require('fs').writeFileSync(tempPath, buffer);
+    let transcription: any;
+    try {
+      transcription = await openai.audio.transcriptions.create({
+        file: audioFile,
+        model: 'whisper-1',
+        language: 'en',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['word', 'segment'],
+        temperature: 0.2,
+        prompt:
+          'This is a spoken IELTS Speaking test response. The speaker may pause, self-correct, use filler words like um, uh, like, or repeat words. Transcribe exactly as spoken, including hesitations and false starts.',
+      } as any);
+    } catch (err) {
+      throw new Error(`whisper transcription failed: ${err instanceof Error ? err.message : err}`);
+    }
 
-    const transcription = await openai.audio.transcriptions.create({
-      file: require('fs').createReadStream(tempPath),
-      model: 'whisper-1',
-      response_format: 'json',
-    });
+    const segments = transcription.segments || [];
+    const transcriptWithTimestamps = segments
+      .map((s: any) => `[${s.start.toFixed(1)}s] ${s.text}`)
+      .join('\n');
 
-    require('fs').unlinkSync(tempPath);
+    const { pauses, speechRate, duration } = extractDisfluencyMarkers(transcription);
+    const disfluencyMarkers = `Speech rate: ${speechRate} words per minute. Significant pauses: ${
+      pauses.length ? pauses.map((p) => `after "${p.after}" (${p.duration}s)`).join(', ') : 'none detected'
+    }.`;
 
-const scoringPrompt = `
-${RUBRIC}
+    const scoringPrompt = `You are a certified IELTS Speaking examiner with 15+ years of experience, trained on the official IELTS Speaking Band Descriptors (Public Version). You are evaluating a candidate's response to a single Cue Card task.
 
-Score this IELTS Speaking Part 2 response the way a real, fair, generous-but-honest examiner would.
+CONTEXT PROVIDED TO YOU:
+- Cue Card topic: ${topic}
+- Cue Card prompts: ${points}
+- Full timestamped transcript: ${transcriptWithTimestamps}
+- Response duration: ${Math.round(duration)} seconds
+- Filler word / pause markers from transcription: ${disfluencyMarkers}
 
-Transcript:
-"${transcription.text}"
+CALIBRATION RULES (read carefully before scoring):
+1. Score holistically across all 4 criteria, the way a real examiner does in a live test — not like an automated grammar checker penalizing every minor slip.
+2. Do NOT default to a "safe middle" score. If the candidate shows genuine range, coherence, and only occasional lapses, score 7-8, not 6-6.5. Reserve 6 and below for responses with clear, repeated breakdowns in communication, not just imperfect grammar.
+3. Under-length or single-sentence answers should be penalized under Fluency & Coherence specifically — not used to drag down all four scores.
+4. Weigh natural spoken English patterns (self-correction, natural pausing, informal connectors) as normal — not as errors — unless they actually obstruct meaning.
+5. A few minor grammar or pronunciation slips in an otherwise fluent, well-developed, idea-rich answer should NOT cap the band below 7.
 
-First, in 3-4 sentences, briefly reason through the evidence for each of the four criteria, quoting specific words or phrases from the transcript that justify your scores. Be honest about genuine weaknesses, but don't invent flaws — if the sample sounds like a strong, natural speaker, say so and score accordingly.
+SCORE EACH CRITERION 0-9 (in 0.5 increments) USING THE OFFICIAL DESCRIPTORS:
+Fluency & Coherence: speech rate/rhythm, hesitation patterns, self-correction, logical sequencing, coherent linking, topic development and extension.
+Lexical Resource: range of vocabulary, use of less common/idiomatic language, paraphrase ability, precision and appropriacy of word choice, collocation accuracy.
+Grammatical Range & Accuracy: range of structures attempted, complex sentence use, error frequency AND whether errors impede meaning, accuracy of tense/agreement.
+Pronunciation: word/sentence stress, intonation, individual sound production, chunking, overall intelligibility.
 
-Then write the exact line:
-===SCORE===
-
-Then, after that line, output ONLY the JSON object in this exact format, nothing else after it:
+OUTPUT FORMAT — return ONLY valid JSON, no markdown, no preamble:
 {
-  "fluency": <1-9>,
-  "lexical": <1-9>,
-  "grammar": <1-9>,
-  "pronunciation": <1-9>,
-  "overallBand": <average, rounded to nearest 0.5>,
-  "strengths": ["short phrase", "short phrase", "short phrase"],
-  "improvements": ["short phrase", "short phrase", "short phrase"],
-  "suggested": "one short, encouraging, specific recommendation for what to practice next, written like a real instructor"
+  "overall_band": <number>,
+  "criteria": {
+    "fluency_coherence": { "band": <number>, "evidence": "<1-2 specific quotes/moments from the transcript that justify this score>" },
+    "lexical_resource": { "band": <number>, "evidence": "<...>" },
+    "grammatical_range_accuracy": { "band": <number>, "evidence": "<...>" },
+    "pronunciation": { "band": <number>, "evidence": "<...>" }
+  },
+  "top_strengths": [
+    { "strength": "<specific, named skill>", "evidence": "<exact moment/phrase from transcript>", "why_it_matters": "<how this maps to band descriptors>" }
+  ],
+  "priority_improvements": [
+    { "issue": "<specific, named weakness>", "evidence": "<exact moment/phrase>", "connected_strength": "<which existing strength this should build on>", "actionable_fix": "<one concrete drill or rephrasing exercise>" }
+  ],
+  "examiner_summary": "<3-4 sentences, written the way a real examiner would speak it to the candidate face-to-face — encouraging but honest, referencing their actual answer content>"
 }
-`;
+IMPORTANT: Every strength and improvement MUST cite actual words/phrases from the transcript. Never write generic feedback. The "connected_strength" field is mandatory.`;
 
     const scoreRes = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
+      max_tokens: 1500,
       messages: [{ role: 'user', content: scoringPrompt }],
     });
 
-const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
-    const rawText = textBlock.text as string;
-    const jsonPart = rawText.includes('===SCORE===') ? rawText.split('===SCORE===')[1] : rawText;
-    const scoreData = JSON.parse(jsonPart.replace(/```json|```/g, '').trim());
-const sessionRecord = { date: new Date().toISOString(), name, topic, transcript: transcription.text, ...scoreData };
+    const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
+    const raw = textBlock.text as string;
+    const cleaned = raw.replace(/```json\n?|```/g, '').trim();
+    const jsonStart = cleaned.indexOf('{');
+    const jsonEnd = cleaned.lastIndexOf('}');
+    const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
+
+    let result: any;
+    try {
+      result = JSON.parse(jsonSlice);
+      if (!result.overall_band || !result.criteria) {
+        throw new Error('malformed score response — missing required fields');
+      }
+    } catch (err) {
+      throw new Error(`malformed json response from scoring model: ${err instanceof Error ? err.message : err}`);
+    }
+
+    const flat = {
+      fluency: result.criteria.fluency_coherence.band,
+      lexical: result.criteria.lexical_resource.band,
+      grammar: result.criteria.grammatical_range_accuracy.band,
+      pronunciation: result.criteria.pronunciation.band,
+      overallBand: result.overall_band,
+    };
+
+    const sessionRecord = {
+      date: new Date().toISOString(),
+      name,
+      topic,
+      transcript: transcription.text,
+      ...flat,
+      topStrengths: result.top_strengths,
+      priorityImprovements: result.priority_improvements,
+      examinerSummary: result.examiner_summary,
+    };
     await redis.rpush('sessions', JSON.stringify(sessionRecord));
-    return NextResponse.json(scoreData);
-  } catch (err: any) {
-    console.error('Scoring error:', err);
-    return NextResponse.json({ error: err.message || 'Something went wrong while scoring.' }, { status: 500 });
+
+    return NextResponse.json({ ...flat, full: result });
+  } catch (err) {
+    const classified = classifyScoringError(err);
+    console.error('Scoring error:', classified);
+    return NextResponse.json({ error: classified.message, type: classified.type }, { status: 500 });
   }
 }
