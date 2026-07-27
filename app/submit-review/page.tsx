@@ -9,18 +9,21 @@ export default function SubmitReview() {
   const [comment, setComment] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
-    if (!name.trim() || !comment.trim() || !rating) {
-      setError('Please fill in your name, a rating, and your opinion.');
+    if (!name.trim() || !comment.trim() || !rating || submitting) {
+      if (!submitting) setError('Please fill in your name, a rating, and your opinion.');
       return;
     }
     setError('');
+    setSubmitting(true);
     await fetch('/api/reviews', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, profession, institute, rating, comment }),
     });
+    setSubmitting(false);
     setSubmitted(true);
   }
 
@@ -96,8 +99,8 @@ export default function SubmitReview() {
 
         {error && <p className="text-red-600 text-sm mb-3">{error}</p>}
 
-        <button onClick={submit} className="w-full gradient-btn rounded-xl py-3">
-          Submit Review
+        <button onClick={submit} disabled={submitting} className="w-full gradient-btn rounded-xl py-3 disabled:opacity-50">
+          {submitting ? 'Submitting...' : 'Submit Review'}
         </button>
       </div>
     </main>

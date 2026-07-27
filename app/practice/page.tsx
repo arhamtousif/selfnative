@@ -79,6 +79,7 @@ export default function Practice() {
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     if (phase === 'prep' || phase === 'speaking') {
@@ -155,12 +156,14 @@ export default function Practice() {
   }
 
   async function submitReview() {
-    if (!rating || !comment.trim()) return;
+    if (!rating || !comment.trim() || submittingReview) return;
+    setSubmittingReview(true);
     await fetch('/api/reviews', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, rating, comment }),
-    });
+   });
+    setSubmittingReview(false);
     setReviewSubmitted(true);
   }
 
@@ -368,8 +371,8 @@ export default function Practice() {
                   className="w-full border border-slate-200 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 outline-none focus:border-violet-400 mb-3 resize-none"
                   rows={3}
                 />
-                <button onClick={submitReview} className="gradient-btn rounded-xl px-6 py-2.5 text-sm">
-                  Submit review
+                <button onClick={submitReview} disabled={submittingReview} className="gradient-btn rounded-xl px-6 py-2.5 text-sm disabled:opacity-50">
+                  {submittingReview ? 'Submitting...' : 'Submit review'}
                 </button>
               </div>
             </div>
