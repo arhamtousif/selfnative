@@ -27,6 +27,7 @@ export default function RootLayout({
           </a>
           <nav className="flex items-center gap-4 md:gap-6">
             <span className="hidden md:flex items-center gap-6">
+              <a href="/about">About</a>
               <a href="/dashboard">Dashboard</a>
               <a href="/reviews">Reviews</a>
               <a href="/submit-review">Give a Review</a>
