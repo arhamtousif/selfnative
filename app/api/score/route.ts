@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
 import { Redis } from '@upstash/redis';
+import { jsonrepair } from 'jsonrepair';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -64,7 +65,8 @@ export async function POST(req: NextRequest) {
     const transcriptWithTimestamps = segments
       .map((s: any) => `[${s.start.toFixed(1)}s] ${s.text}`)
       .join('\n');
-      const wordCount = (transcription.words || []).length;
+
+    const wordCount = (transcription.words || []).length;
     if (wordCount < 8) {
       return NextResponse.json(
         { error: 'Your recording seems too short to score. Please speak for at least 15-20 seconds and try again.', type: 'too_short' },
@@ -119,69 +121,73 @@ OUTPUT FORMAT — return ONLY valid JSON, no markdown, no preamble:
 IMPORTANT: Every strength and improvement MUST cite actual words/phrases from the transcript. Never write generic feedback. The "connected_strength" field is mandatory.`;
 
     async function callClaudeAndParse() {
-  const scoreRes = await anthropic.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1500,
-    system: `
-You are an API.
+      const scoreRes = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2500,
+        system: `
+You are an API. Return ONLY valid, strictly parseable JSON.
 
-Return ONLY valid JSON.
+Never use markdown or code fences.
+Never explain anything outside the JSON.
 
-Never use markdown.
-Never use \`\`\`.
-Never explain anything.
-
-Your response must be valid JSON.
+CRITICAL: Any quotation marks that appear inside a JSON string value (for example, when quoting the candidate's exact words) MUST be escaped as \\" — never use a bare " inside a string value. When quoting the candidate, prefer wrapping the quoted phrase in single quotes ' ' instead of double quotes, to avoid this entirely.
 `,
-    messages: [
-      {
-        role: 'user',
-        content: scoringPrompt,
-      },
-    ],
-  });
+        messages: [
+          {
+            role: 'user',
+            content: scoringPrompt,
+          },
+        ],
+      });
 
-  const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
+      const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
 
-  if (!textBlock) {
-    throw new Error("Claude returned no text.");
-  }
+      if (!textBlock) {
+        throw new Error('Claude returned no text.');
+      }
 
-  const raw = textBlock.text as string;
+      const raw = textBlock.text as string;
 
-  console.log("========== CLAUDE RAW RESPONSE START ==========");
-  console.log(raw);
-  console.log("========== CLAUDE RAW RESPONSE END ==========");
+      console.log('========== CLAUDE RAW RESPONSE START ==========');
+      console.log(raw);
+      console.log('========== CLAUDE RAW RESPONSE END ==========');
 
-  const cleaned = raw.replace(/```json\s*|```/g, '').trim();
+      const cleaned = raw.replace(/```json\s*|```/g, '').trim();
 
-  const jsonStart = cleaned.indexOf('{');
-  const jsonEnd = cleaned.lastIndexOf('}');
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd = cleaned.lastIndexOf('}');
 
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("No JSON object found.");
-  }
+      if (jsonStart === -1 || jsonEnd === -1) {
+        throw new Error('No JSON object found.');
+      }
 
-  const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
+      const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
 
-  console.log("========== JSON TO PARSE ==========");
-  console.log(jsonSlice);
-  console.log("===================================");
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonSlice);
+      } catch (parseErr) {
+        console.log('========== JSON.parse FAILED, ATTEMPTING REPAIR ==========');
+        try {
+          const repaired = jsonrepair(jsonSlice);
+          parsed = JSON.parse(repaired);
+          console.log('========== JSON REPAIR SUCCEEDED ==========');
+        } catch (repairErr) {
+          throw new Error(`JSON parse failed even after repair: ${repairErr instanceof Error ? repairErr.message : repairErr}`);
+        }
+      }
 
-  const parsed = JSON.parse(jsonSlice);
+      if (parsed.overall_band === undefined || !parsed.criteria) {
+        throw new Error('Malformed score response — missing required fields.');
+      }
 
-  if (parsed.overall_band === undefined || !parsed.criteria) {
-    throw new Error("Malformed score response.");
-  }
-
-  return parsed;
-}
+      return parsed;
+    }
 
     let result: any;
     try {
       result = await callClaudeAndParse();
     } catch (firstErr) {
-      // Silent one-time retry before surfacing an error to the user
       try {
         result = await callClaudeAndParse();
       } catch (secondErr) {
