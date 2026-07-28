@@ -125,11 +125,18 @@ export default function Home() {
       )}
 
       <section id="partners" className="max-w-6xl mx-auto px-6 py-20 text-center">
-        <h2 className="display text-3xl font-bold mb-10">
+        <h2 className="display text-3xl font-bold mb-4">
           Our trusted <span className="gradient-text">Partners</span>
         </h2>
-        <div className="card p-12 text-slate-400">
-          Partner logos coming soon.
+        <p className="text-slate-500 mb-10 max-w-lg mx-auto">
+          Working with coaching centers to bring judgment-free speaking practice directly to their students.
+        </p>
+        <div className="card p-8 max-w-sm mx-auto">
+          <a href="https://www.facebook.com/ormenglobaleducation" target="_blank" rel="noopener noreferrer" className="block">
+            <img src="/ormen-logo.png" alt="Ormen Global Education" className="h-24 w-auto mx-auto mb-4" />
+            <p className="font-semibold text-slate-800">Ormen Global Education</p>
+            <p className="text-xs text-slate-400 mt-1">Partnership confirmed · Student rollout coming soon</p>
+          </a>
         </div>
       </section>
 
