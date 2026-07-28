@@ -129,7 +129,7 @@ export default function Home() {
           Our trusted <span className="gradient-text">Partners</span>
         </h2>
         <p className="text-slate-500 mb-10 max-w-lg mx-auto">
-          Working with coaching centers to bring judgment-free speaking practice directly to their students.
+          Working with Educational Consultants to bring judgment-free speaking practice directly to their students.
         </p>
         <div className="grid sm:grid-cols-2 gap-5 max-w-xl mx-auto">
           <div className="card p-8">

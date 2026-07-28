@@ -119,23 +119,63 @@ OUTPUT FORMAT — return ONLY valid JSON, no markdown, no preamble:
 IMPORTANT: Every strength and improvement MUST cite actual words/phrases from the transcript. Never write generic feedback. The "connected_strength" field is mandatory.`;
 
     async function callClaudeAndParse() {
-      const scoreRes = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1500,
-        messages: [{ role: 'user', content: scoringPrompt }],
-      });
-      const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
-      const raw = textBlock.text as string;
-      const cleaned = raw.replace(/```json\n?|```/g, '').trim();
-      const jsonStart = cleaned.indexOf('{');
-      const jsonEnd = cleaned.lastIndexOf('}');
-      const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
-      const parsed = JSON.parse(jsonSlice);
-      if (!parsed.overall_band || !parsed.criteria) {
-        throw new Error('malformed score response — missing required fields');
-      }
-      return parsed;
-    }
+  const scoreRes = await anthropic.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    system: `
+You are an API.
+
+Return ONLY valid JSON.
+
+Never use markdown.
+Never use \`\`\`.
+Never explain anything.
+
+Your response must be valid JSON.
+`,
+    messages: [
+      {
+        role: 'user',
+        content: scoringPrompt,
+      },
+    ],
+  });
+
+  const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
+
+  if (!textBlock) {
+    throw new Error("Claude returned no text.");
+  }
+
+  const raw = textBlock.text as string;
+
+  console.log("========== CLAUDE RAW RESPONSE START ==========");
+  console.log(raw);
+  console.log("========== CLAUDE RAW RESPONSE END ==========");
+
+  const cleaned = raw.replace(/```json\s*|```/g, '').trim();
+
+  const jsonStart = cleaned.indexOf('{');
+  const jsonEnd = cleaned.lastIndexOf('}');
+
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("No JSON object found.");
+  }
+
+  const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
+
+  console.log("========== JSON TO PARSE ==========");
+  console.log(jsonSlice);
+  console.log("===================================");
+
+  const parsed = JSON.parse(jsonSlice);
+
+  if (parsed.overall_band === undefined || !parsed.criteria) {
+    throw new Error("Malformed score response.");
+  }
+
+  return parsed;
+}
 
     let result: any;
     try {
