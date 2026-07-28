@@ -64,6 +64,13 @@ export async function POST(req: NextRequest) {
     const transcriptWithTimestamps = segments
       .map((s: any) => `[${s.start.toFixed(1)}s] ${s.text}`)
       .join('\n');
+      const wordCount = (transcription.words || []).length;
+    if (wordCount < 8) {
+      return NextResponse.json(
+        { error: 'Your recording seems too short to score. Please speak for at least 15-20 seconds and try again.', type: 'too_short' },
+        { status: 400 }
+      );
+    }
 
     const { pauses, speechRate, duration } = extractDisfluencyMarkers(transcription);
     const disfluencyMarkers = `Speech rate: ${speechRate} words per minute. Significant pauses: ${
@@ -111,27 +118,35 @@ OUTPUT FORMAT — return ONLY valid JSON, no markdown, no preamble:
 }
 IMPORTANT: Every strength and improvement MUST cite actual words/phrases from the transcript. Never write generic feedback. The "connected_strength" field is mandatory.`;
 
-    const scoreRes = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1500,
-      messages: [{ role: 'user', content: scoringPrompt }],
-    });
-
-    const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
-    const raw = textBlock.text as string;
-    const cleaned = raw.replace(/```json\n?|```/g, '').trim();
-    const jsonStart = cleaned.indexOf('{');
-    const jsonEnd = cleaned.lastIndexOf('}');
-    const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
+    async function callClaudeAndParse() {
+      const scoreRes = await anthropic.messages.create({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: scoringPrompt }],
+      });
+      const textBlock = scoreRes.content.find((c: any) => c.type === 'text') as any;
+      const raw = textBlock.text as string;
+      const cleaned = raw.replace(/```json\n?|```/g, '').trim();
+      const jsonStart = cleaned.indexOf('{');
+      const jsonEnd = cleaned.lastIndexOf('}');
+      const jsonSlice = cleaned.slice(jsonStart, jsonEnd + 1);
+      const parsed = JSON.parse(jsonSlice);
+      if (!parsed.overall_band || !parsed.criteria) {
+        throw new Error('malformed score response — missing required fields');
+      }
+      return parsed;
+    }
 
     let result: any;
     try {
-      result = JSON.parse(jsonSlice);
-      if (!result.overall_band || !result.criteria) {
-        throw new Error('malformed score response — missing required fields');
+      result = await callClaudeAndParse();
+    } catch (firstErr) {
+      // Silent one-time retry before surfacing an error to the user
+      try {
+        result = await callClaudeAndParse();
+      } catch (secondErr) {
+        throw new Error(`malformed json response from scoring model after retry: ${secondErr instanceof Error ? secondErr.message : secondErr}`);
       }
-    } catch (err) {
-      throw new Error(`malformed json response from scoring model: ${err instanceof Error ? err.message : err}`);
     }
 
     const flat = {
