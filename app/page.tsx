@@ -129,13 +129,13 @@ export default function Home() {
           Our trusted <span className="gradient-text">Partners</span>
         </h2>
         <p className="text-slate-500 mb-10 max-w-lg mx-auto">
-          Working with coaching centers to bring judgment-free speaking practice directly to their students.
+          Working with Educational Consultant to bring judgment-free speaking practice directly to their students.
         </p>
         <div className="card p-8 max-w-sm mx-auto">
           <a href="https://www.facebook.com/ormenglobaleducation" target="_blank" rel="noopener noreferrer" className="block">
             <img src="/ormen-logo.png" alt="Ormen Global Education" className="h-24 w-auto mx-auto mb-4" />
             <p className="font-semibold text-slate-800">Ormen Global Education</p>
-            <p className="text-xs text-slate-400 mt-1">Partnership confirmed · Student rollout coming soon</p>
+            <p className="text-xs text-violet-500 font-medium mt-1 uppercase tracking-wide">Official Partner</p>
           </a>
         </div>
       </section>
